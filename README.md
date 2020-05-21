@@ -9,3 +9,5 @@
 - Gabriel Citroni Uliana - nUSP: 9779367
 
 ## Abstract
+
+This project aims to create imagens using other images. It takes an image by input, analyses its colors and tries to reconstruct it using a database of other images separated by predominant color.
