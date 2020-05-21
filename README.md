@@ -1,1 +1,11 @@
-SCC 251 PDI - FINAL PROJECT
+# SCC0251 Digital Image Processing
+
+## Assignment 2: Image Enhancement and Filtering
+
+**Authors:**
+
+- Alexandre Norcia Medeiros - nUSP: 10295583
+- Daniel Penna Chaves Bertazzo - nUSP: 10349561
+- Gabriel Citroni Uliana - nUSP: 9779367
+
+## Abstract
