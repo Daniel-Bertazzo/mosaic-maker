@@ -1,6 +1,6 @@
 # SCC0251 Digital Image Processing
 
-## Assignment 2: Image Enhancement and Filtering
+## Final Assignment: Reconstructing an image with a Collage Montage
 
 **Authors:**
 
