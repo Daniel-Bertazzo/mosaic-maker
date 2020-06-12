@@ -160,6 +160,6 @@ out_img = mosaic_transform(canvas_img, tile_img, resolution=(100, 100))
 
 # verifies if the modified image needs to be saved
 if (save):
-    imageio.imwrite('output_image.png', out_img.astype(np.uint8))
+    imageio.imwrite('output images/output_image.png', out_img.astype(np.uint8))
 
 print("Acabou")
