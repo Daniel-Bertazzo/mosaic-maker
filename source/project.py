@@ -27,7 +27,7 @@ def downscale(img, n, m):
             out_img[x, y, 1] = frame[:, :, 1].sum() / (x_factor * y_factor)
             out_img[x, y, 2] = frame[:, :, 2].sum() / (x_factor * y_factor)
 
-    return out_img.astype(np.uint8)
+    return out_img
 
 
 def create_mosaic_division(img, method=1, resolution=(8, 8)):
@@ -157,6 +157,7 @@ canvas_img = canvas_img.astype(np.float)
 tile_img = tile_img.astype(np.float)
 
 out_img = mosaic_transform(canvas_img, tile_img, resolution=(100, 100))
+out_img = out_img.astype(np.uint8)
 
 # verifies if the modified image needs to be saved
 if (save):
