@@ -13,6 +13,7 @@
 
 import numpy as np
 import imageio
+from skimage.color import rgb2hsv, hsv2rgb
 
 
 def normalize_image(img, new_min=0, new_max=255):
@@ -134,28 +135,52 @@ def get_predominant_color(img, method=1):
         color[1] = np.mean(img[:, :, 1])
         color[2] = np.mean(img[:, :, 2])
 
+    # elif method == 2:
+        
+    #     color[0] = np.argmax(np.bincount(img[ :, :, 0]))
+    #     color[1] = np.argmax(np.bincount(img[ :, :, 1]))
+    #     color[2] = np.argmax(np.bincount(img[ :, :, 2]))
+
     return color, min_colors, max_colors
 
 
-def alter_color(img, predominant_color, min_color, max_color):
+def alter_color(img, predominant_color, min_color, max_color, method=1):
     """ alters the color of the image to approximate it to the predominant_color parameter
         
         inputs:
+            img:
+            predominant_color:
+            min_color:
+            max_color:
+            method:
     """
 
     out_img = np.array(img, copy=True)
-    out_img = normalize_image(out_img, new_min=0, new_max=1)
 
-    # (100, 150, 200) -> (100/(100 + 150 + 200), , ) color example
-    out_img[:, :, 0] = out_img[:, :, 0] * (predominant_color[0] / np.sum(predominant_color))
-    out_img[:, :, 1] = out_img[:, :, 1] * (predominant_color[1] / np.sum(predominant_color))
-    out_img[:, :, 2] = out_img[:, :, 2] * (predominant_color[2] / np.sum(predominant_color))
+    if method == 1:
+        
+        out_img[:, :, 0] = out_img[:, :, 0] * (predominant_color[0] / np.sum(predominant_color)) # R
+        out_img[:, :, 1] = out_img[:, :, 1] * (predominant_color[1] / np.sum(predominant_color)) # G
+        out_img[:, :, 2] = out_img[:, :, 2] * (predominant_color[2] / np.sum(predominant_color)) # B
 
+    elif method == 2:
+        
+        # transforms to the HSV color representation
+        out_img = rgb2hsv(out_img)
+        predominant_color = rgb2hsv(predominant_color)
+        
+        out_img[:, :, 0] = (predominant_color[0]) # alters hue
+        out_img[:, :, 1] = (predominant_color[1]) # alters saturation
+        
+        out_img = hsv2rgb(out_img)
+    
+    # returns to original color interval in rgb to accurately represent the intensity (black/white)
     out_img = normalize_image(out_img, new_min=min_color, new_max=max_color)
+
     return np.clip(out_img, 0, 255)
 
 
-def mosaic_transform(canvas_img, tile_img, division_method=1, resolution=(8, 8), color_method=1):
+def mosaic_transform(canvas_img, tile_img, division_method=1, resolution=(8, 8), get_color_method=1, alter_color_method=1):
     """ creates a mosaic that represents one image using other images
         
         inputs:
@@ -163,8 +188,14 @@ def mosaic_transform(canvas_img, tile_img, division_method=1, resolution=(8, 8),
             tile_img: image used as mosaic tiles
             division_method: 1 - every tile have the same size
                              2 - tiles with different sizes
-            resolution: 
-            color_method: 
+
+            resolution: number of tiles to compose the final image in each dimension
+
+            get_color_method: 1 - Obtain predominant color by the mean of all pixels
+                              2 - 
+
+            alter_color_method: 1 - RGB color processing
+                                2 - HSV color processing
     """
 
     mosaic_division = create_mosaic_division(
@@ -185,9 +216,9 @@ def mosaic_transform(canvas_img, tile_img, division_method=1, resolution=(8, 8),
         count += 1
         # print("subimage: ", count)
 
-        predominant_color, min_color, max_color = get_predominant_color(canvas_img[xi:xf, yi:yf], method=color_method)
+        predominant_color, min_color, max_color = get_predominant_color(canvas_img[xi:xf, yi:yf], method=get_color_method)
         # tile = downscale(tile_img, xf - xi, yf - yi) 
-        tile = alter_color(down_tile, predominant_color, min_color, max_color)
+        tile = alter_color(down_tile, predominant_color, min_color, max_color, method=alter_color_method)
         out_img[xi:xf, yi:yf] = tile
 
     print("out image: ", canvas_img.shape)
