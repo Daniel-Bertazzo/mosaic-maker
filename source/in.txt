@@ -1,2 +1,2 @@
 lapis2.jpg
-verde_p.png
+pencil.png
