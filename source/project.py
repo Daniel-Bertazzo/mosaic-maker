@@ -53,7 +53,40 @@ def downscale(img, n, m):
     return out_img
 
 
-def create_mosaic_division(img, method=1, resolution=(50, 50), p=0.7, random_shapes=(10, 10, 100, 25)):
+def find_division(divisions, xi, xf, yi, yf):
+    e = [xf - xi, yf - yi]
+    if e not in divisions:
+        # print("Divisao nova!")
+        divisions.append(e)
+
+    return divisions.index(e)
+
+
+def create_division_dist(n_elem=100, n_div=10, mean=100, std=25, fix_black=0, axis_size=1000):
+    """ generates elements in the normal distribuiton that define the shapes in the mosaic
+    """
+    rand_x = np.random.normal(loc=mean, scale=std, size=n_div)
+    # rand_x = np.random.exponential(scale=1.0, size=n_div) + 1
+    # rand_x = np.random.randint(low=1, high=30, size=n_div)
+
+    u = np.zeros((n_elem))  # mosaic proportion in the axis dimension
+    # fill the vectors that will define the mosaic division
+    for i in range(n_elem):
+        u[i] = rand_x[np.random.randint(0, n_div)]
+
+    # normalize the vectors, so it represents the proportion that each tile occupies in the mosaic
+    u = u / np.sum(u)
+
+    # possible black border fix
+    if (fix_black == 1):  # add the numeric error to the last element, so it can cover all pixels in the image
+        missing_x = axis_size - \
+            (np.sum((u*axis_size).astype(np.int)))  # numeric error
+        u[-1] += missing_x / axis_size
+
+    return u
+
+
+def create_mosaic_division(img, method=1, resolution=(50, 50), p=0.7, rand_parameters=(10, 10, 100, 25), fix_black=1):
     """ return an array of index that define a mosaic composition to overlay the image 
     
         input:
@@ -95,22 +128,25 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), p=0.7, random_sha
 
     x, y = img.shape[0:2]
 
-    n = x // resolution[0]
-    m = y // resolution[1]
-
-    # number of pixels not being represented in the x dimension
-    missing_x = round(((x/resolution[0]) - (x//resolution[0])) * resolution[0])
-    # number of pixels not being represented in the y dimension
-    missing_y = round(((y/resolution[1]) - (y//resolution[1])) * resolution[1])
-
-    print("Mosaic divison: n = ", n, ", m = ", m)
-    print("Black border size: ", missing_x, missing_y)
-
     mosaic = np.zeros((resolution[0]*resolution[1], 5), dtype=int)
     divisions = []
 
     if method == 1:
         # divides the image in rectagles of the same size
+
+        n = x // resolution[0]
+        m = y // resolution[1]
+
+        # number of pixels not being represented in the x and y dimension
+        missing_x = 0
+        missing_y = 0
+        if fix_black == 1:
+            missing_x = round(
+                ((x/resolution[0]) - (x//resolution[0])) * resolution[0])
+            missing_y = round(
+                ((y/resolution[1]) - (y//resolution[1])) * resolution[1])
+        print("Mosaic divison: n = ", n, ", m = ", m)
+        print("Black border size: ", missing_x, missing_y)
 
         offset_x = 0
         for i in range(resolution[0]):
@@ -127,64 +163,113 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), p=0.7, random_sha
                     offset_y += 1
                 yf = (j+1)*m + offset_y
 
-                e = [xf - xi, yf - yi]
-                if e not in divisions:
-                    print("Divisao nova!")
-                    divisions.append(e)
-
-                d = divisions.index(e)
+                d = find_division(divisions, xi, xf, yi, yf)
 
                 mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
 
     elif method == 2:
         # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
 
-        # generates elements in the normal distribuiton that define the shapes in the mosaic
-        rand_x = np.random.normal(
-            loc=random_shapes[2], scale=random_shapes[3], size=random_shapes[0])
-        rand_y = np.random.normal(
-            loc=random_shapes[2], scale=random_shapes[3], size=random_shapes[1])
-
-        u = np.zeros((resolution[0]))  # mosaic proportion in the x dimension
-        v = np.zeros((resolution[1]))  # mosaic proportion in the y dimension
-        # fill the vectors that will define the mosaic division
-        for i in range(resolution[0]):
-            u[i] = rand_x[np.random.randint(0, random_shapes[0])]
-        for i in range(resolution[1]):
-            v[i] = rand_y[np.random.randint(0, random_shapes[1])]
-
-        # normalize the vectors, so it represents the proportion that each tile occupies in the mosaic
-        u = u / np.sum(u)
-        v = v / np.sum(v)
-
-        print(np.unique(u).shape, np.unique(u))
-        print(np.unique(v).shape, np.unique(v))
-
-        # random_shapes=(4, 4, 100, 25)
+        u = create_division_dist(n_elem=resolution[0], n_div=rand_parameters[0],
+                                 mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=x)
+        v = create_division_dist(n_elem=resolution[1], n_div=rand_parameters[1],
+                                 mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=y)
 
         # fill the mosaic divison
         last_x = 0
         for i in range(resolution[0]):
             xi = last_x
-            xf = int(u[i]*x + xi)
+            xf = int(round(u[i]*x + xi))
             last_x = xf
 
             last_y = 0
             for j in range(resolution[1]):
                 yi = last_y
-                yf = int(v[j]*y + yi)
+                yf = int(round(v[j]*y + yi))
                 last_y = yf
 
-                e = [xf - xi, yf - yi]
-                if e not in divisions:
-                    print("Divisao nova!")
-                    divisions.append(e)
+                xf = np.clip(xf, 0, x)
+                yf = np.clip(yf, 0, y)
 
-                d = divisions.index(e)
+                d = find_division(divisions, xi, xf, yi, yf)
 
                 mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
 
-    # print(offset_x, offset_y)
+    elif method == 3:
+        # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
+
+        # unico tipo de linhas, onde todos tiles tem a mesma altura numa mesma linha
+        u = create_division_dist(n_elem=resolution[0], n_div=rand_parameters[0],
+                                 mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=x)
+
+        # fill the mosaic divison
+        last_x = 0
+        for i in range(resolution[0]):
+            xi = last_x
+            xf = int(round(u[i]*x + xi))
+            last_x = xf
+
+            # varias colunas com larguras diferentes
+            v = create_division_dist(n_elem=resolution[1], n_div=rand_parameters[1],
+                                     mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=y)
+
+            last_y = 0
+            for j in range(resolution[1]):
+                yi = last_y
+                yf = int(round(v[j]*y + yi))
+                last_y = yf
+
+                xf = np.clip(xf, 0, x)
+                yf = np.clip(yf, 0, y)
+
+                d = find_division(divisions, xi, xf, yi, yf)
+
+                mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
+
+    elif method == 4:
+        # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
+
+        # varias colunas aleatorias com larguras diferentes
+        for i in range(resolution[0]):
+
+            v = create_division_dist(n_elem=resolution[1], n_div=rand_parameters[1],
+                                     mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=y)
+            last_y = 0
+            for j in range(resolution[1]):
+                yi = last_y
+                yf = int(round(v[j]*y + yi))  # 20 top, 40 meio ruim
+                last_y = int(round(v[j]*y + yi))
+                mosaic[(i*resolution[1]) + j, 2] = yi
+                mosaic[(i*resolution[1]) + j, 3] = yf
+
+                # mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
+                # mosaic[(i*resolution[1]) + j] = append([0, 0, yi, yf, 0])
+
+        # varias linhas aleatorias com alturas diferentes
+        for j in range(resolution[1]):
+
+            u = create_division_dist(n_elem=resolution[0], n_div=rand_parameters[0],
+                                     mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=x)
+            last_x = 0
+            for i in range(resolution[0]):
+                xi = last_x
+                xf = int(round(u[i]*x + xi))
+                last_x = int(round(u[i]*x + xi))
+
+                mosaic[(i*resolution[1]) + j, 0] = xi
+                mosaic[(i*resolution[1]) + j, 1] = xf
+        # acha e completa os buraco
+
+        for i in range(resolution[0]):
+            for j in range(resolution[1]):
+                xi, xf, yi, yf, d = mosaic[(i*resolution[1]) + j]
+
+                xi, xf = np.clip([xi, xf], 0, x)
+                yi, yf = np.clip([yi, yf], 0, y)
+
+                d = find_division(divisions, xi, xf, yi, yf)
+
+                mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
 
     return mosaic, divisions
 
@@ -263,7 +348,7 @@ def alter_color(img, predominant_color, min_color, max_color, method=1):
     return np.clip(out_img, 0, 255)
 
 
-def mosaic_transform(canvas_img, tile_img, division_method=1, resolution=(50, 50), p=0.7, random_shapes=(10, 10, 100, 25), get_color_method=1, alter_color_method=2):
+def mosaic_transform(canvas_img, tile_img, division_method=1, resolution=(50, 50), p=0.7, random_shapes=(10, 10, 100, 25), fix_black=1, get_color_method=1, alter_color_method=2):
     """ creates a mosaic that represents one image using other images
         
         inputs:
@@ -285,7 +370,7 @@ def mosaic_transform(canvas_img, tile_img, division_method=1, resolution=(50, 50
 
     print("Creating mosaic...")
     mosaic, divisions = create_mosaic_division(
-        canvas_img, method=division_method, resolution=resolution)
+        canvas_img, method=division_method, resolution=resolution, fix_black=fix_black)
 
     print("number of divison: ", len(divisions))
     print(divisions)
@@ -322,7 +407,7 @@ canvas_img = canvas_img.astype(np.float)
 tile_img = tile_img.astype(np.float)
 
 out_img = mosaic_transform(canvas_img, tile_img, division_method=2, resolution=(
-    100, 100), p=0.7, random_shapes=(10, 10, 100, 25), get_color_method=1, alter_color_method=2)
+    100, 100), p=0.7, random_shapes=(10, 10, 100, 25), fix_black=1, get_color_method=1, alter_color_method=2)
 out_img = out_img.astype(np.uint8)
 
 
