@@ -1,2 +1,14 @@
 lapis2.jpg
+2
 pencil.png
+verde_p.png
+100
+100
+3
+10
+10
+100
+25
+1
+2
+output_image.jpg
