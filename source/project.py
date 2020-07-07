@@ -75,8 +75,19 @@ def downscale(img, n, m):
     return out_img
 
 
+def fix_division(xi, xf, axis_size):
+    # make sure that the division have at least 1 pixel and does not surpasses the axis
+    xi, xf = np.clip([xi, xf], 0, axis_size)
+
+    if(xf-xi <= 1):
+        xi -= 1
+        xf += 1
+
+    return np.clip([xi, xf], 0, axis_size)
+
 def find_division(divisions, xi, xf, yi, yf):
     e = [xf - xi, yf - yi]
+
     if e not in divisions:
         # print("Divisao nova!")
         divisions.append(e)
@@ -87,9 +98,7 @@ def find_division(divisions, xi, xf, yi, yf):
 def create_division_dist(n_elem=100, n_div=10, mean=100, std=25, fix_black=0, axis_size=1000):
     """ generates elements in the normal distribuiton that define the shapes in the mosaic
     """
-    rand_x = np.random.normal(loc=mean, scale=std, size=n_div)
-    # rand_x = np.random.exponential(scale=1.0, size=n_div) + 1
-    # rand_x = np.random.randint(low=1, high=30, size=n_div)
+    rand_x = np.abs(np.random.normal(loc=mean, scale=std, size=n_div))
 
     u = np.zeros((n_elem))  # mosaic proportion in the axis dimension
     # fill the vectors that will define the mosaic division
@@ -125,7 +134,9 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), rand_parameters=(
 
     x, y = img.shape[0:2]
 
-    mosaic = np.zeros((resolution[0]*resolution[1], 5), dtype=int)
+    # mosaic[i] = [xi, xf, yi, yf, d]  e -> 0 = primeira imagem, 1 = segunda imagem ... n = n imagem
+    mosaic = []
+    # divisions[i] = [xf - xi, yf - yi]
     divisions = []
 
     if method == 1:
@@ -159,8 +170,7 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), rand_parameters=(
                 yf = (j+1)*m + offset_y
 
                 d = find_division(divisions, xi, xf, yi, yf)
-
-                mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
+                mosaic.append([xi, xf, yi, yf, d])
 
     elif method == 2:
         # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
@@ -173,20 +183,19 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), rand_parameters=(
         for i in range(resolution[0]):
             xi = last_x
             xf = int(round(u[i]*x + xi))
+            xi, xf = fix_division(xi, xf, x)
             last_x = xf
 
             last_y = 0
             for j in range(resolution[1]):
                 yi = last_y
                 yf = int(round(v[j]*y + yi))
+                yi, yf = fix_division(yi, yf, y)
                 last_y = yf
 
-                xf = np.clip(xf, 0, x)
-                yf = np.clip(yf, 0, y)
 
                 d = find_division(divisions, xi, xf, yi, yf)
-
-                mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
+                mosaic.append([xi, xf, yi, yf, d])
 
     elif method == 3:
         # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
@@ -200,6 +209,7 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), rand_parameters=(
         for i in range(resolution[0]):
             xi = last_x
             xf = int(round(u[i]*x + xi))
+            xi, xf = fix_division(xi, xf, x)
             last_x = xf
 
             # varias colunas com larguras diferentes
@@ -210,14 +220,11 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), rand_parameters=(
             for j in range(resolution[1]):
                 yi = last_y
                 yf = int(round(v[j]*y + yi))
+                yi, yf = fix_division(yi, yf, y)
                 last_y = yf
 
-                xf = np.clip(xf, 0, x)
-                yf = np.clip(yf, 0, y)
-
                 d = find_division(divisions, xi, xf, yi, yf)
-
-                mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
+                mosaic.append([xi, xf, yi, yf, d])
 
     elif method == 4:
         # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
@@ -230,10 +237,12 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), rand_parameters=(
             last_y = 0
             for j in range(resolution[1]):
                 yi = last_y
-                yf = int(round(v[j]*y + yi)) # 20 top, 40 meio ruim
-                last_y = int(round(v[j]*y + yi))
-                mosaic[(i*resolution[1]) + j, 2] = yi
-                mosaic[(i*resolution[1]) + j, 3] = yf
+                yf = int(round(v[j]*y + yi))
+                yi, yf = fix_division(yi, yf, y)
+                last_y = yf
+                
+                # mosaic.append([xi=0, xf=0, yi, yf, d=0])
+                mosaic.append([0, 0, yi, yf, 0])
 
         # varias linhas aleatorias com alturas diferentes
         for j in range(resolution[1]):
@@ -244,21 +253,18 @@ def create_mosaic_division(img, method=1, resolution=(50, 50), rand_parameters=(
             for i in range(resolution[0]):
                 xi = last_x
                 xf = int(round(u[i]*x + xi))
-                last_x = int(round(u[i]*x + xi))
+                xi, xf = fix_division(xi, xf, x)
+                last_x = xf
 
-                mosaic[(i*resolution[1]) + j, 0] = xi
-                mosaic[(i*resolution[1]) + j, 1] = xf
+                yi, yf = mosaic[(i*resolution[1]) + j][2:4]
+                mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, 0]
         # acha e completa os buraco
 
         for i in range(resolution[0]):
             for j in range(resolution[1]):
                 xi, xf, yi, yf, d = mosaic[(i*resolution[1]) + j]
 
-                xi, xf = np.clip([xi, xf], 0, x)
-                yi, yf = np.clip([yi, yf], 0, y)
-
                 d = find_division(divisions, xi, xf, yi, yf)
-
                 mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
 
 
@@ -364,7 +370,7 @@ def mosaic_transform(canvas_img, tile_img, division_method=1, resolution=(50, 50
         canvas_img, method=division_method, resolution=resolution, rand_parameters=rand_parameters, fix_black=fix_black)
 
     n_div = len(divisions)
-    print("number of divison: ", n_div)
+    print("number of unique divison: ", n_div, ", total divisions: ", len(mosaic))
     # print(divisions)
 
     print("Creating tile images...")
@@ -411,7 +417,7 @@ canvas_img = canvas_img.astype(np.float)
 tile_img = tile_img.astype(np.float)
 
 out_img = mosaic_transform(canvas_img, tile_img, division_method=4, resolution=(
-    100, 100), rand_parameters=(10, 10, 100, 25), fix_black=0, get_color_method=1, alter_color_method=2)
+    100, 100), rand_parameters=(10, 10, 100, 25), fix_black=1, get_color_method=1, alter_color_method=2)
 out_img = out_img.astype(np.uint8)
 
 
