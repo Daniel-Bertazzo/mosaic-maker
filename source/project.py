@@ -9,8 +9,6 @@
     Final Project - Image Mosaic Collage Composition
 """
 
-# oficial
-
 import numpy as np
 import imageio
 from skimage.color import rgb2hsv, hsv2rgb
@@ -25,11 +23,14 @@ def setup_progressbar(bar_width=50):
     sys.stdout.write("\b" * (bar_width+1))
 
 
-def print_progress(n, i, bar_width=50):
-    # n -> total problem size, i-> iteration
-    # 1/100 -> 1 % --> 1/bar_width -> 1% of bar width
-    if (i % (round((1.0/bar_width)*n)) == 0):
-        # update the bar
+def update_progressbar(n, i, bar_width=50):
+    # updates the bar considering the porcentage of work done,
+    # n being the size of the problem and i the actual iteration.
+
+    if (n < bar_width):
+        sys.stdout.write("%s" % ('-'*(bar_width//n)))
+        sys.stdout.flush()
+    elif (i % (round((1.0/bar_width)*n)) == 0):
         sys.stdout.write("-")
         sys.stdout.flush()
 
@@ -39,17 +40,18 @@ def finish_progressbar():
 
 
 def normalize_image(img, new_min=0, new_max=255):
-    """ returns a image with its values normalized between [new_min:new_max] """
+    """ returns an image with its values normalized between [new_min:new_max] """
 
     old_min = np.amin(img)
     old_max = np.amax(img)
 
     return new_min + (((img - old_min) * (new_max - new_min)) / (old_max - old_min))
-    # return (new_max + new_min)/2 # returns a solid color
 
 
 def downscale(img, n, m):
-    """ Takes an image by input and downscale it to the desired resolution """
+    """ Takes an image by input and downscales it to the desired resolution (n, m) 
+        The downscale is done by aquiring the mean value of a region, so it can be represented by only one value
+    """
 
     out_img = np.zeros((n, m, 3))
     xi, yi = img.shape[0:2]
@@ -76,7 +78,10 @@ def downscale(img, n, m):
 
 
 def fix_division(xi, xf, axis_size):
-    # make sure that the division have at least 1 pixel and does not surpasses the axis
+    """ Aux function used in the mosaic division function,
+
+        it make sure that the created division cover at least 1 pixel and does not surpasses the axis size
+    """
     xi, xf = np.clip([xi, xf], 0, axis_size)
 
     if(xf-xi <= 1):
@@ -87,11 +92,17 @@ def fix_division(xi, xf, axis_size):
 
 
 def find_division(divisions, xi, xf, yi, yf, n_imgs):
-    e = [xf - xi, yf - yi]
+    """ Aux function used in the mosaic division function,
+
+        This function maps all needed divisions in a list,
+        it search a division defined by [xf-xi, yf-yi] in the list divisions and return it's index
+        if the division doesn't exist, it will be created and have a tile image index associated to it
+    """
+    e = [xf - xi, yf - yi]  # division dimension that define an unique division
 
     found = False
-    i = 0
-    img = 0
+    i = 0  # image index used to search the list
+    img = 0  # true image index to be returned
     while(i < n_imgs and not found):
         if e+[i] in divisions:
             found = True
@@ -99,7 +110,6 @@ def find_division(divisions, xi, xf, yi, yf, n_imgs):
         i += 1
 
     if not found:
-        # print("Divisao nova!")
         img = np.random.randint(0, n_imgs)
         divisions.append(e+[img])
 
@@ -107,11 +117,20 @@ def find_division(divisions, xi, xf, yi, yf, n_imgs):
 
 
 def create_division_dist(n_elem=100, n_div=10, mean=100, std=25, fix_black=0, axis_size=1000):
-    """ generates elements in the normal distribuiton that define the shapes in the mosaic
-    """
-    rand_x = np.abs(np.random.normal(loc=mean, scale=std, size=n_div))
+    """ Aux function used in the random mosaic division,
 
-    u = np.zeros((n_elem))  # mosaic proportion in the axis dimension
+        it generates elements in the normal distributon that define the shapes in the mosaic
+        parameters:
+            n_elem: amount of elements that will represent all the divisions done in the axis (resolution in the axis)
+            n_div: max amount of unique elements in the distribution, so it can reduce the unique divisions
+            mean, std: mean and standard deviation of the normal distribution
+            fix_black: flag to calculate the numeric error, it generates more unique division when equals 1 
+            axis_size: size of the axis that the distribution represents, needed when fix_black = 1 
+    """
+    rand_x = np.abs(np.random.normal(loc=mean, scale=std,
+                                     size=n_div))  # unique proportions
+
+    u = np.zeros((n_elem))  # divisions proportions that cover the axis
     # fill the vectors that will define the mosaic division
     for i in range(n_elem):
         u[i] = rand_x[np.random.randint(0, n_div)]
@@ -120,52 +139,58 @@ def create_division_dist(n_elem=100, n_div=10, mean=100, std=25, fix_black=0, ax
     u = u / np.sum(u)
 
     # possible black border fix
-    if (fix_black == 1): # add the numeric error to the last element, so it can cover all pixels in the image
-        missing_x = axis_size - (np.sum((u*axis_size).astype(np.int))) # numeric error
+    if (fix_black == 1):  # add the numeric error to the last element, so it can cover all pixels in the image
+        missing_x = axis_size - \
+            (np.sum((u*axis_size).astype(np.int)))  # numeric error
         u[-1] += missing_x / axis_size
 
     return u
 
 
-def create_mosaic_division(img, n_imgs=1, method=1, resolution=(50, 50), rand_parameters=(10, 10, 100, 25), fix_black=1):
+def create_mosaic_division(x, y, n_imgs=1, resolution=(50, 50), method=1, rand_parameters=(10, 10, 100, 25), fix_black=1):
     """ return an array of index that define a mosaic composition to overlay the image 
     
         input:
-            resolution: amount of tiles in the (x,y) dimensions with compose the mosaic
-            method: 1 - divides the image in same sized rectangles
-                    2 - creates a random mosaic -- low amount of unique division, faster algorithm
-                    3 - creates a random mosaic with a more varied y dimension -- medium amount of unique divions
-                    4 - creates a random mosaic with more unique division in x and y dimensions -- high amount of unique divisions
-
-            p: used in the 3 method, probability of aglomerating tiles togheter
-            shapes: (amount of different shapes that can occour in the x dimension, mean, sd)
+            x, y: shape of the image that will be represented as a mosaic.
+            n_imgs: number of tile images that will compose the mosaic.
+            resolution: amount of tiles in the (x,y) dimensions that will compose the mosaic.
+            method: 1 - divides the image into equal sized rectangles;
+                    2 - creates a random mosaic -- low amount of unique division, faster algorithm;
+                    3 - creates a random mosaic with a more varied y dimension -- medium amount of unique divions;
+                    4 - creates a random mosaic with more unique division in x and y dimensions -- high amount of unique divisions.
+            rand_parameters: parameters that will be used in the random creation of the mosaic, depending on the method.
+                    rand_parameters[0]: number of different shapes that can occur in the x dimension;
+                    rand_parameters[1]: number of different shapes that can occur in the y dimension;
+                    rand_parameters[2]: the normal distribution's mean, which will be used in the creation of the mosaic shapes;
+                    rand_parameters[3]: the normal distribution's standard deviation.
+                            
         return:
-            mosaic: array of tuples defining the subimages range (xi, xf, yi, yf)
-            divisions: array of tuples defining the sizes that the tiles need to downscale after
+            mosaic: array of lists defining the subimages' ranges                           
+            divisions: array of lists defining the sizes and images that each tile will use 
+            # mosaic[i] = [xi, xf, yi, yf, d=division_index]
+            # divisions[i] = [x_size=xf-xi, y_size=yf-yi, e=image_index]
 
     """
 
-    x, y = img.shape[0:2]
-
-    # mosaic[i] = [xi, xf, yi, yf, d]  
+    # mosaic[i] = [xi, xf, yi, yf, d=division_index]
     mosaic = []
-    # divisions[i] = [xf - xi, yf - yi, e] e -> 0 = primeira imagem, 1 = segunda imagem ... n = n imagem
+    # divisions[i] = [x_size=xf-xi, y_size=yf-yi, e=image_index]
     divisions = []
 
+    # ******************* Method 1 *******************
     if method == 1:
         # divides the image in rectagles of the same size
-
         n = x // resolution[0]
         m = y // resolution[1]
 
-        # number of pixels not being represented in the x and y dimension
+        # number of pixels missing in the x and y dimension because of integer division
         missing_x = 0
         missing_y = 0
         if fix_black == 1:
-            missing_x = round(((x/resolution[0]) - (x//resolution[0])) * resolution[0])
-            missing_y = round(((y/resolution[1]) - (y//resolution[1])) * resolution[1])
-        print("Mosaic divison: n = ", n, ", m = ", m)
-        print("Black border size: ", missing_x, missing_y)
+            missing_x = round(
+                ((x/resolution[0]) - (x//resolution[0])) * resolution[0])
+            missing_y = round(
+                ((y/resolution[1]) - (y//resolution[1])) * resolution[1])
 
         offset_x = 0
         for i in range(resolution[0]):
@@ -185,11 +210,17 @@ def create_mosaic_division(img, n_imgs=1, method=1, resolution=(50, 50), rand_pa
                 d = find_division(divisions, xi, xf, yi, yf, n_imgs)
                 mosaic.append([xi, xf, yi, yf, d])
 
-    elif method == 2:
+    # ******************* Method 2/3 *******************
+    elif method == 2 or method == 3:
         # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
 
-        u = create_division_dist(n_elem=resolution[0], n_div=rand_parameters[0], mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=x)
-        v = create_division_dist(n_elem=resolution[1], n_div=rand_parameters[1], mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=y)
+        # Creates only one distribution to define the rows, so all tiles will have the same height in a given row
+        u = create_division_dist(n_elem=resolution[0], n_div=rand_parameters[0], mean=rand_parameters[2],
+                                 std=rand_parameters[3], fix_black=fix_black, axis_size=x)
+        if method == 2:
+            # Creates only one distribution to define the columns, so all tiles will have the same width in a given column
+            v = create_division_dist(n_elem=resolution[1], n_div=rand_parameters[1], mean=rand_parameters[2],
+                                     std=rand_parameters[3], fix_black=fix_black, axis_size=y)
 
         # fill the mosaic divison
         last_x = 0
@@ -199,35 +230,10 @@ def create_mosaic_division(img, n_imgs=1, method=1, resolution=(50, 50), rand_pa
             xi, xf = fix_division(xi, xf, x)
             last_x = xf
 
-            last_y = 0
-            for j in range(resolution[1]):
-                yi = last_y
-                yf = int(round(v[j]*y + yi))
-                yi, yf = fix_division(yi, yf, y)
-                last_y = yf
-
-
-                d = find_division(divisions, xi, xf, yi, yf, n_imgs)
-                mosaic.append([xi, xf, yi, yf, d])
-
-    elif method == 3:
-        # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
-
-        # unico tipo de linhas, onde todos tiles tem a mesma altura numa mesma linha
-        u = create_division_dist(n_elem=resolution[0], n_div=rand_parameters[0],
-                                 mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=x)
-
-        # fill the mosaic divison
-        last_x = 0
-        for i in range(resolution[0]):
-            xi = last_x
-            xf = int(round(u[i]*x + xi))
-            xi, xf = fix_division(xi, xf, x)
-            last_x = xf
-
-            # varias colunas com larguras diferentes
-            v = create_division_dist(n_elem=resolution[1], n_div=rand_parameters[1],
-                                            mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=y)
+            if method == 3:
+                # Creates various distribution defining the columns, so all tiles have diferents widths in all columns
+                v = create_division_dist(n_elem=resolution[1], n_div=rand_parameters[1], mean=rand_parameters[2],
+                                         std=rand_parameters[3], fix_black=fix_black, axis_size=y)
 
             last_y = 0
             for j in range(resolution[1]):
@@ -239,12 +245,13 @@ def create_mosaic_division(img, n_imgs=1, method=1, resolution=(50, 50), rand_pa
                 d = find_division(divisions, xi, xf, yi, yf, n_imgs)
                 mosaic.append([xi, xf, yi, yf, d])
 
+    # ******************* Method 4 *******************
     elif method == 4:
-        # creates a random mosaic in the x and y dimension, while mantaining the desired resolution
+        # creates a more random mosaic in the x and y dimension, while mantaining the desired resolution
+        # note that this method may create roles in the final mosaic
 
-        # varias colunas aleatorias com larguras diferentes
+        # Creates various distribution defining the columns, so all tiles have diferents widths in all columns
         for i in range(resolution[0]):
-
             v = create_division_dist(n_elem=resolution[1], n_div=rand_parameters[1],
                                      mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=y)
             last_y = 0
@@ -253,13 +260,13 @@ def create_mosaic_division(img, n_imgs=1, method=1, resolution=(50, 50), rand_pa
                 yf = int(round(v[j]*y + yi))
                 yi, yf = fix_division(yi, yf, y)
                 last_y = yf
-                
+
                 # mosaic.append([xi=0, xf=0, yi, yf, d=0])
                 mosaic.append([0, 0, yi, yf, 0])
 
-        # varias linhas aleatorias com alturas diferentes
+        # Creates various distribution defining the rows, so all tiles have diferents heights in all rows
+        # and defines all unique divisions and it index in the divisions list
         for j in range(resolution[1]):
-
             u = create_division_dist(n_elem=resolution[0], n_div=rand_parameters[0],
                                      mean=rand_parameters[2], std=rand_parameters[3], fix_black=fix_black, axis_size=x)
             last_x = 0
@@ -270,16 +277,9 @@ def create_mosaic_division(img, n_imgs=1, method=1, resolution=(50, 50), rand_pa
                 last_x = xf
 
                 yi, yf = mosaic[(i*resolution[1]) + j][2:4]
-                mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, 0]
-        # acha e completa os buraco
-
-        for i in range(resolution[0]):
-            for j in range(resolution[1]):
-                xi, xf, yi, yf, d = mosaic[(i*resolution[1]) + j]
-
+                # mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, 0]
                 d = find_division(divisions, xi, xf, yi, yf, n_imgs)
                 mosaic[(i*resolution[1]) + j] = [xi, xf, yi, yf, d]
-
 
     return mosaic, divisions
 
@@ -306,7 +306,6 @@ def get_predominant_color(img):
     color[1] = np.mean(img[:, :, 1])
     color[2] = np.mean(img[:, :, 2])
 
-
     return color, min_colors, max_colors
 
 
@@ -314,26 +313,27 @@ def alter_color(img, predominant_color, min_color, max_color, method=1):
     """ alters the color of the image to approximate it to the predominant_color parameter
         
         inputs:
-            img:
-            predominant_color:
-            min_color:
-            max_color:
-            method:
+            img: downscaled tile image.
+            predominant_color: the predominant color of a given section of the canvas image (obtained using the mean).
+            min_color: the minimum color value of a given section of the canvas image.
+            max_color: the maximum color value of a given section of the canvas image.
+            method: which color representation method to use in the color processing
+                1 - RGB: applies a color balancing in the rgb model, so the tile image color moves to the desired color
+                2 - HSV: use the hue and saturation of the desired color to replace these values in the tile image 
+                In both methods, a normalization using the max and min intensities of the original image is required, 
+                so it can accurately represent the color intensity of the original image.
     """
 
     out_img = np.array(img, copy=True)
 
     if method == 1:
-
-        out_img[:, :, 0] = out_img[:, :, 0] * \
-            (predominant_color[0] / np.sum(predominant_color))  # R
-        out_img[:, :, 1] = out_img[:, :, 1] * \
-            (predominant_color[1] / np.sum(predominant_color))  # G
-        out_img[:, :, 2] = out_img[:, :, 2] * \
-            (predominant_color[2] / np.sum(predominant_color))  # B
+        predominant_color = predominant_color / np.sum(predominant_color)
+        # changes the color channels proportions to the predominant color proportion
+        out_img[:, :, 0] = out_img[:, :, 0] * predominant_color[0]  # R
+        out_img[:, :, 1] = out_img[:, :, 1] * predominant_color[1]  # G
+        out_img[:, :, 2] = out_img[:, :, 2] * predominant_color[2]  # B
 
     elif method == 2:
-
         # transforms to the HSV color representation
         out_img = rgb2hsv(out_img)
         predominant_color = rgb2hsv(np.reshape(predominant_color, (1, 1, 3)))
@@ -349,34 +349,42 @@ def alter_color(img, predominant_color, min_color, max_color, method=1):
     return np.clip(out_img, 0, 255)
 
 
-def mosaic_transform(canvas_img, tile_imgs, n_imgs=1, division_method=1, resolution=(50, 50),
+def mosaic_transform(canvas_img, tile_imgs, n_imgs=1, resolution=(50, 50), division_method=1,
                      rand_parameters=(10, 10, 100, 25), fix_black=1, alter_color_method=2):
     """ creates a mosaic that represents one image using other images
         
         inputs:
-            canvas_img: image to be generated with the mosaic 
-            tile_imgs: images used as mosaic tiles
-            division_method: 1 - every tile have the same size
-                             2 - tiles with different sizes
-
-            resolution: number of tiles to compose the final image in each dimension
-
-            get_color_method: 1 - Obtain predominant color by the mean of all pixels
-                              2 - 
-
+            canvas_img: image to be turned into a mosaic (represented as such).
+            tile_imgs: images used as the mosaic's tiles.
+            n_imgs: number of tile images that will compose the mosaic.
+            resolution: number of tiles to compose the final image in each dimension (x, y)
+            division_method: 1 - divides the image into equal sized rectangles;
+                             2 - creates a random mosaic -- low amount of unique divisions, faster algorithm;
+                             3 - creates a random mosaic with a more varied y dimension -- medium amount of unique divisions;
+                             4 - creates a random mosaic with more unique divisions in x and y dimensions -- high amount of unique divisions.
+            rand_parameters: parameters that will be used in the random creation of the mosaic, depending on the method.
+                    rand_parameters[0]: number of different shapes that can occur in the x dimension;
+                    rand_parameters[1]: number of different shapes that can occur in the y dimension;
+                    rand_parameters[2]: the gaussians distribution's mean, which will be used in the creation of the mosaic shapes;
+                    rand_parameters[3]: the gaussian distribution's standard deviation.
+            fix_black: chooses whether the black border will be fixed (1) or not (0).
             alter_color_method: 1 - RGB color processing
                                 2 - HSV color processing
+
+        return:
+            out_img: the canvas image represented as a mosaic, composed of smaller versions of all tile images.
     """
 
     out_img = np.zeros(canvas_img.shape)  # creates output image
 
     print("Creating mosaic...")
-    mosaic, divisions = create_mosaic_division(canvas_img, n_imgs=n_imgs,
-        method=division_method, resolution=resolution, rand_parameters=rand_parameters, fix_black=fix_black)
+    x, y = canvas_img.shape[0:2]
+    mosaic, divisions = create_mosaic_division(x, y, n_imgs=n_imgs, resolution=resolution,
+                                               method=division_method, rand_parameters=rand_parameters, fix_black=fix_black)
 
     n_div = len(divisions)
-    print("number of unique divison: ", n_div, ", total divisions: ", len(mosaic))
-    # print(divisions)
+    print("number of unique divison: ", n_div,
+          ", total divisions: ", len(mosaic))
 
     print("Creating tile images...")
     setup_progressbar()
@@ -384,9 +392,10 @@ def mosaic_transform(canvas_img, tile_imgs, n_imgs=1, division_method=1, resolut
 
     down_tiles = []
     for division in divisions:
-        down_tiles.append(downscale(tile_imgs[division[2]], division[0], division[1]))
+        down_tiles.append(
+            downscale(tile_imgs[division[2]], division[0], division[1]))
         i += 1
-        print_progress(n=n_div, i=i)
+        update_progressbar(n=n_div, i=i)
     finish_progressbar()
 
     print("Composing the Mosaic...")
@@ -398,14 +407,17 @@ def mosaic_transform(canvas_img, tile_imgs, n_imgs=1, division_method=1, resolut
 
         predominant_color, min_color, max_color = get_predominant_color(
             canvas_img[xi:xf, yi:yf])
-        tile = alter_color(down_tiles[d], predominant_color, min_color, max_color, method=alter_color_method)
+        tile = alter_color(
+            down_tiles[d], predominant_color, min_color, max_color, method=alter_color_method)
         out_img[xi:xf, yi:yf] = tile
         i += 1
-        print_progress(n=resolution[0]*resolution[1], i=i)
+        update_progressbar(n=resolution[0]*resolution[1], i=i)
     finish_progressbar()
 
     return out_img
 
+
+# ******************************************************** Main ********************************************************
 
 # reads inputs
 print("Enter the image name that will be represented as a mosaic: ")
@@ -430,11 +442,15 @@ print("3 - creates a random mosaic with a more varied y dimension               
 print("4 - creates a random mosaic with more unique division in x and y dimensions -- high amount of unique divisions\n")
 division_method = int(input())
 
+ux = 0
+uy = 0
+mean = 0
+std = 0
 if division_method > 1:
     print("Enter the amount of unique elements in the x and y dimensions: ")
     ux = int(input())
     uy = int(input())
-    print("Enter the normal distribuition parameters (mean and standard deviation): ")
+    print("Enter the normal distribution parameters (mean and standard deviation): ")
     mean = float(input())
     std = float(input())
 
@@ -449,17 +465,20 @@ alter_color_method = int(input())
 print("Enter the output image name with the format (ex: out_image.jpg): ")
 out_name = str(input()).rstrip()
 
-# reads image from directory and changes the data type
-canvas_img = imageio.imread('../images/'+img_name_canvas).astype(np.float)
+# reads image from directory and changes the data type, also it ignores the alpha channel in png format
+canvas_img = imageio.imread(
+    '../images/'+img_name_canvas)[:, :, 0:3].astype(np.float)
 tile_imgs = []
 for name in tile_names:
-    tile_imgs.append(imageio.imread('../images/'+name).astype(np.float))
+    tile_imgs.append(imageio.imread('../images/'+name)
+                     [:, :, 0:3].astype(np.float))
 
-
-out_img = mosaic_transform(canvas_img, tile_imgs, n_imgs=n_imgs, division_method=division_method, 
-    resolution=(x, y), rand_parameters=(ux, uy, mean, std), fix_black=fix_black, alter_color_method=alter_color_method)
+# creates mosaic
+out_img = mosaic_transform(canvas_img, tile_imgs, n_imgs=n_imgs, resolution=(x, y), division_method=division_method,
+                           rand_parameters=(ux, uy, mean, std), fix_black=fix_black, alter_color_method=alter_color_method)
 out_img = out_img.astype(np.uint8)
 
+# save image
 imageio.imwrite('../output_images/'+out_name, out_img.astype(np.uint8))
 
 print("Acabou")
