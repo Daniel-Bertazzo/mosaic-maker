@@ -1,7 +1,7 @@
-lapis2.jpg
+cavalo1.jpg
 2
-pencil.png
-verde_p.png
+lapis.jpg
+lapis2.jpg
 100
 100
 3
