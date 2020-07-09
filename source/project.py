@@ -481,4 +481,4 @@ out_img = out_img.astype(np.uint8)
 # save image
 imageio.imwrite('../output_images/'+out_name, out_img.astype(np.uint8))
 
-print("Acabou")
+print("Finished.")
