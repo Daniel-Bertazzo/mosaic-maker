@@ -251,7 +251,7 @@ def create_mosaic_division(x, y, n_imgs=1, resolution=(50, 50), method=1, rand_p
     # ******************* Method 4 *******************
     elif method == 4:
         # creates a more random mosaic in the x and y dimension, while mantaining the desired resolution
-        # note that this method may create roles in the final mosaic
+        # note that this method may create holes in the final mosaic
 
         # Creates various distribution defining the columns, so all tiles have diferents widths in all columns
         for i in range(resolution[0]):
