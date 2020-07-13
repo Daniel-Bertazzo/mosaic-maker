@@ -8,7 +8,7 @@
 - Daniel Penna Chaves Bertazzo - nUSP: 10349561
 - Gabriel Citroni Uliana - nUSP: 9779367
 
-[YouTube Video Presentatio](https://youtu.be/5cVeOupqb1Q)
+[YouTube Video Presentation](https://youtu.be/5cVeOupqb1Q)
 
 ## Folders and files
 * The folder `images` contains the images we used to make the example mosaics, as well as some unused photos.
